@@ -1,0 +1,16 @@
+# Microsoft binary cache + built packages (fetch via prime-cache.sh)
+cache/*.deb
+cache/*.partial
+cache/onboarding/**
+!cache/onboarding/.gitkeep
+!cache/README.md
+# Keep Packages excerpts (small, audit trail)
+!cache/Packages-mdatp-*.txt
+
+out/
+logs/
+build/
+src/
+pkg/
+*.pkg.tar*
+*.pkg.tar.*.sig

@@ -1,0 +1,21 @@
+post_install() {
+  systemd-sysusers mdatp.conf
+  systemctl daemon-reload
+  echo 'mdatp-microsoft installed. Next:'
+  echo '  1. sudo systemctl enable --now mdatp'
+  echo '  2. Onboard with MicrosoftDefenderATPOnboardingLinuxServer.py from the Defender portal'
+  echo '  3. mdatp health'
+}
+
+post_upgrade() {
+  systemd-sysusers mdatp.conf
+  systemctl daemon-reload
+  systemctl try-restart mdatp.service || true
+}
+
+post_remove() {
+  systemctl daemon-reload
+  if id mdatp &>/dev/null; then
+    userdel mdatp 2>/dev/null || true
+  fi
+}
