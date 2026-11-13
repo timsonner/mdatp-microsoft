@@ -1,56 +1,65 @@
-# mdatp-microsoft (Omarchy / Arch fleet)
+# mdatp-microsoft
 
-Local, **Microsoft-only** packaging of Defender for Endpoint for Omarchy hosts.
-No AUR in the trust chain. Debian **12 prod** channel (stable).
+Local packaging of Microsoft Defender for Endpoint for Omarchy and other Arch-like hosts. `PKGBUILD` pins the Debian 12 prod `.deb` from `packages.microsoft.com` (version and SHA256); `prime-cache.sh` and `verify-cache.sh` check that file, and `makepkg` repackages it as `mdatp-microsoft`. `PKGBUILD` conflicts with `mdatp` and AUR `mdatp-bin`; do not install `mdatp-bin` on fleet hosts. Arch and Omarchy are outside Microsoft’s supported Linux list; replication notes are in [docs/FLEET.md](docs/FLEET.md).
 
-> Status: **primed, not installed.** Licensing + onboarding package are owned by Tim (portal). Do not `enable --now` until onboarding bits are in place.
+## Prerequisites
 
-## Trust model
+- x86_64
+- Arch or Omarchy with `base-devel` (`makepkg` and `pacman`) to build and install
+- `bash`, `curl`, `gzip`, `awk`, and `sha256sum` for the cache scripts
+- `systemd` and `iptables` (declared in `PKGBUILD` `depends`)
+- HTTPS access to `packages.microsoft.com` for `./prime-cache.sh` and `./bump-from-microsoft.sh`
+- `python3` to run the Defender portal onboarding script after install
 
-| Layer | Who |
-| --- | --- |
-| Agent binary | Microsoft (`packages.microsoft.com`, Debian 12 prod `.deb`) |
-| Integrity | SHA256 from Microsoft `Packages` index; re-checked by `prime-cache.sh` / `verify-cache.sh` |
-| Packaging glue | This repo (fleet-owned PKGBUILD) |
-| License / org onboarding | Defender portal (Tim) → `cache/onboarding/` |
+Git ignores `cache/*.deb`. Add the portal onboarding script under `cache/onboarding/` on the host; that directory is gitignored except for `.gitkeep`.
 
-Do **not** install `mdatp-bin` from the AUR on fleet hosts.
+## Install, build, and check
 
-## What’s primed on a gold host
-
-```text
-~/Projects/mdatp-microsoft/
-  PKGBUILD                 # pinned version + sha256
-  mdatp.install            # sysusers + daemon-reload hooks
-  mdatp-sysusers.conf
-  makepkg.local.conf       # SRCDEST=./cache (offline-friendly)
-  prime-cache.sh           # fetch+verify deb into cache/
-  verify-cache.sh
-  bump-from-microsoft.sh   # optional version bump from MS index
-  docs/FLEET.md            # replicate across Omarchy systems
-  cache/
-    mdatp_<ver>_amd64.deb  # verified Microsoft package (~162M)
-    Packages-mdatp-<ver>.txt
-    onboarding/            # you drop portal script here later
-```
-
-## One-host build (when ready — not yet)
+From the repository root:
 
 ```bash
-cd ~/Projects/mdatp-microsoft
+./prime-cache.sh
 ./verify-cache.sh
-makepkg --config ./makepkg.local.conf -s   # builds package; review before -i
-# sudo pacman -U out/mdatp-microsoft-*.pkg.tar.zst
-# sudo systemctl enable --now mdatp   # only after onboarding file exists
+makepkg --config ./makepkg.local.conf -s
+sudo pacman -U out/mdatp-microsoft-*.pkg.tar.zst
 ```
 
-## Your remaining Microsoft steps
+`./prime-cache.sh` downloads `cache/mdatp_<pkgver>_amd64.deb`, requires the SHA256 in `PKGBUILD`, and writes `cache/Packages-mdatp-<pkgver>.txt`. `./verify-cache.sh` repeats those checks and exits non-zero on mismatch. `makepkg.local.conf` sets `PKGDEST` to `out/`, so the built archive is `out/mdatp-microsoft-<pkgver>-<pkgrel>-x86_64.pkg.tar.zst`. The pin in `PKGBUILD` is `101.26091.0004` (`pkgrel` 1).
 
-1. Defender portal → Settings → Endpoints → Onboarding  
-2. OS: **Linux Server**, method: **Local Script**  
-3. Download zip → extract `MicrosoftDefenderATPOnboardingLinuxServer.py`  
-4. Place it in `cache/onboarding/` on the gold host (and/or your secret store)  
-5. Then install + `sudo python3 cache/onboarding/MicrosoftDefenderATPOnboardingLinuxServer.py`  
-6. `mdatp health`
+## Usage
 
-See [docs/FLEET.md](docs/FLEET.md) for multi-host replication.
+Download the Defender portal package for **Linux Server** / **Local Script**, and place `MicrosoftDefenderATPOnboardingLinuxServer.py` in `cache/onboarding/`. Then:
+
+```bash
+sudo systemctl enable --now mdatp
+sudo python3 cache/onboarding/MicrosoftDefenderATPOnboardingLinuxServer.py
+mdatp health
+```
+
+The package links `/usr/bin/mdatp` to `/opt/microsoft/mdatp/sbin/wdavdaemonclient`. `mdatp.install` runs `systemd-sysusers` and `systemctl daemon-reload` after install, and `systemctl try-restart mdatp.service` after upgrade.
+
+To move the pin to the newest Debian 12 prod `mdatp` and re-download it:
+
+```bash
+./bump-from-microsoft.sh
+```
+
+Review the `PKGBUILD` diff before installing that build. Copying a primed tree, health fields, and rollback are in [docs/FLEET.md](docs/FLEET.md).
+
+## Layout
+
+| Path | Role |
+| --- | --- |
+| `PKGBUILD` | Pinned version, SHA256, and package steps |
+| `mdatp.install` | sysusers, daemon-reload, and upgrade restart hooks |
+| `mdatp-sysusers.conf` | `mdatp` system user |
+| `makepkg.local.conf` | Build dirs: `cache/`, `out/`, `build/`, `logs/` |
+| `prime-cache.sh` | Download and hash-check the `.deb` |
+| `verify-cache.sh` | Re-check the cached `.deb` and Packages excerpt |
+| `bump-from-microsoft.sh` | Update `pkgver` and checksums from the Microsoft index |
+| `cache/` | Local `.deb`, index excerpt, and onboarding drop folder |
+| `docs/FLEET.md` | Fleet replication notes |
+
+## License
+
+The agent is Microsoft’s commercial package (`license=('custom: commercial')` in `PKGBUILD`). This repo has no `LICENSE` file of its own. Upstream manual install notes: <https://learn.microsoft.com/en-us/defender-endpoint/linux-install-manually>.
